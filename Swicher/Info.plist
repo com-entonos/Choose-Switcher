@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSServices</key>
+	<array>
+		<dict>
+			<key>NSMessage</key>
+			<string>serviceToSetting</string>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Open Choose Switcher Settings</string>
+			</dict>
+			<key>NSPortName</key>
+			<string>ChooseSwitcher</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+		<dict>
+			<key>NSMessage</key>
+			<string>undoSwitch</string>
+			<key>NSMenuItem</key>
+			<dict>
+				<key>default</key>
+				<string>Undo Choose Switcher</string>
+			</dict>
+			<key>NSPortName</key>
+			<string>ChooseSwitcher</string>
+			<key>NSRequiredContext</key>
+			<dict/>
+		</dict>
+	</array>
+	<key>AppleEvents Sending Usage Description</key>
+	<string>Needed for System Events to call Dock for Space switching</string>
+	<key>Privacy - Accessibility Usage Description</key>
+	<string>Needed to allow for Dock access</string>
+</dict>
+</plist>
