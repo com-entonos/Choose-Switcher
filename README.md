@@ -16,3 +16,8 @@ when switching apps, one of three things will happen:
   4. The Space will switch or not according to the preference for the app
 
 to edit these preferences, open a second Choose Switcher. Or in Services menu of any app, select Services>Open Choose Switcher Settings. all preferences can be deleted with defaults read ~/Library/Preferences/com.entonos.ChooseSwitcher.plist 
+
+
+This is useful since some apps (mail, activity monitor, ...) i do have pinned to certain Spaces, while other apps (terminal, xcode, safari, ...) have multiple open windows and i don't want to jump to the Space with the last used window since you want to open a new one. a Service is provided (Undo Choose Switcher) which in this case, would jump to the Space with the last used window. Similarily if you switch to an app and it switches Spaces, the same Service would transport you back to the previous Space. 
+
+Or that was the idea...
