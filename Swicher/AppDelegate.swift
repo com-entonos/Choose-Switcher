@@ -20,18 +20,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // This shows the settings when you "open" the app again
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        Logger.log("showing Settings from double start.", category: .ui)
+        Logger.log("showing Settings from double start.", category: .ui, level: .debug)
         showSettings()
         return true
     }
     
     @objc func serviceToSetting(_ pasteboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        Logger.log("showing Settings from Services.", category: .ui)
+        Logger.log("showing Settings from Services.", category: .ui, level: .debug)
         showSettings()
     }
 
     @objc func undoSwitch(_ pasteboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        Logger.log("trying to do Undo from Services.", category: .ui)
+        Logger.log("trying to do Undo from Services.", category: .ui, level: .debug)
         SpaceManager.shared.performUndo()
     }
     
@@ -87,7 +87,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             NSApp.terminate(nil)  // abort without permissions
         }
-        Logger.log("have Accessibility permisions")
+        Logger.log("have Accessibility permisions", level: .debug)
     }
 }
 

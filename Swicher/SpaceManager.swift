@@ -106,7 +106,7 @@ class SpaceManager: ObservableObject {
     func performUndo() {
         guard let currentApp = NSWorkspace.shared.frontmostApplication else { return }
         
-        Logger.log("try undo of \(lastAction), curr: \(currentApp.localizedName ?? ""), last: \(lastActiveApp?.localizedName ?? ""), prev: \(previousLastActiveApp?.localizedName ?? "") \(lastAction == .switched && previousLastActiveApp != nil && previousLastActiveApp?.bundleIdentifier != currentApp.bundleIdentifier)")
+        Logger.log("try undo of \(lastAction), curr: \(currentApp.localizedName ?? ""), last: \(lastActiveApp?.localizedName ?? ""), prev: \(previousLastActiveApp?.localizedName ?? "") \(lastAction == .switched && previousLastActiveApp != nil && previousLastActiveApp?.bundleIdentifier != currentApp.bundleIdentifier)",level: .debug)
         switch lastAction {
         case .switched:
             if let prevApp = previousLastActiveApp, prevApp.bundleIdentifier != currentApp.bundleIdentifier {  // want to try to switch back to the previous app
