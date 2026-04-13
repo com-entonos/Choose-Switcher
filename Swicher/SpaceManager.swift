@@ -39,12 +39,14 @@ class SpaceManager: ObservableObject {
         
         if hasWindowInCurrentSpace(pid: app.processIdentifier) {  // if in current Space, do nothing
             lastAction = .onScreen
-            if forceSwitch[bid] ?? false { lastActiveApp = app }
-            Logger.log("has on screen windows\(forceSwitch[bid] ?? false ? ", updated lastActiveApp" : "")", level: .debug)
+            //if forceSwitch[bid] ?? false { lastActiveApp = app }
+            //Logger.log("has on screen windows\(forceSwitch[bid] ?? false ? ", updated lastActiveApp" : "")", level: .debug)
+            if forceSwitch[bid] != nil { lastActiveApp = app }
+            Logger.log("has on screen windows, \(forceSwitch[bid] == nil ? "will ask to" : (forceSwitch[bid]! ? "will" : "will not")) switch", level: .debug)
             return
         }
         
-        if forceSwitch[bid] == nil && !justOnce {    // go ask
+        if forceSwitch[bid] == nil {    // go ask
             Logger.log("need to call showPrompt", level: .debug)
             justOnce = showPrompt(app: app)
         }
@@ -53,10 +55,10 @@ class SpaceManager: ObservableObject {
             Logger.log("first need to activate instead of \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "<none>") (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<noID>"))", level: .debug)
             app.activate()
         } else {
-            if justOnce || forceSwitch[bid] ?? false {
-                Logger.log("trying to switch (.switched) Space... (justOnce? \(justOnce), forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
+            if forceSwitch[bid] ?? false {
+                if justOnce { forceSwitch.removeValue(forKey: bid); justOnce = false }
                 lastAction = .switched
-                justOnce = false
+                Logger.log("trying to switch (.switched) Space... (forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
                 clickDockIcon(appName: app.localizedName ?? "")
             } else {
                 lastAction = .override
@@ -94,33 +96,29 @@ class SpaceManager: ObservableObject {
         let response = alert.runModal()
     
         Logger.log("showPrompt: \(response == .alertFirstButtonReturn ? "switch" : "")\(response == .alertSecondButtonReturn ? "stay" : "")\(response == .alertThirdButtonReturn ? "just once" : "") button choosen", category: .ui, level: .debug)
-        if response == .alertSecondButtonReturn {
-            forceSwitch[app.bundleIdentifier!] = false
-        } else if response == .alertFirstButtonReturn {
-            forceSwitch[app.bundleIdentifier!] = true
-        }
+        forceSwitch[app.bundleIdentifier!] = !(response == .alertSecondButtonReturn)
         return response == .alertThirdButtonReturn
     }
     
     // Logic for the new Undo/Force shortcut
     func performUndo() {
-        guard let currentApp = NSWorkspace.shared.frontmostApplication else { return }
+        guard let currentApp = NSWorkspace.shared.frontmostApplication, let prevApp = previousLastActiveApp else { return }
         
-        Logger.log("try undo of \(lastAction), curr: \(currentApp.localizedName ?? ""), last: \(lastActiveApp?.localizedName ?? ""), prev: \(previousLastActiveApp?.localizedName ?? "") \(lastAction == .switched && previousLastActiveApp != nil && previousLastActiveApp?.bundleIdentifier != currentApp.bundleIdentifier)",level: .debug)
+        Logger.log("try undo of \(lastAction), curr: \(currentApp.localizedName ?? ""), last: \(lastActiveApp?.localizedName ?? ""), prev: \(prevApp.localizedName ?? "") \(lastAction == .switched && prevApp.bundleIdentifier != currentApp.bundleIdentifier)",level: .debug)
         switch lastAction {
         case .switched:
-            if let prevApp = previousLastActiveApp, prevApp.bundleIdentifier != currentApp.bundleIdentifier {  // want to try to switch back to the previous app
-                Logger.log("trying to activate prev", level: .debug)
+            if prevApp.bundleIdentifier != currentApp.bundleIdentifier {
+                Logger.log("trying to activate \(prevApp.localizedName ?? "")", level: .debug)
                 lastActiveApp = currentApp
                 prevApp.activate()
             }
         case .override:
-            Logger.log("trying to switch Space (was .override) back to curr", level: .debug)
+            Logger.log("trying to switch Space (was .override) back to \(currentApp.localizedName ?? "")", level: .debug)
             lastAction = .switched
             lastActiveApp = currentApp
             clickDockIcon(appName: currentApp.localizedName ?? "")
         case .onScreen:
-            Logger.log("do nothing (.onScreen)",level: .debug)
+            Logger.log("do nothing (.onScreen)", level: .debug)
             // do nothing
             break
         }
