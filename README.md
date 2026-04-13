@@ -12,7 +12,7 @@ when switching apps, one of three things will happen:
        2. Stay Here
        3. Just Once
           
-     selectiong the first choice with switch to a Space that was the last active window of the app. the second choice and the Space will not change. In either case that preference is stored for that app. the last option will switch to a Space with open windows for that app but will not record the preference.
+     selecting the first choice with switch to a Space that was the last active window of the app. the second choice and the Space will not change. In either case that preference is stored for that app. the last option will switch to a Space with open windows for that app but will not record the preference.
   4. The Space will switch or not according to the preference for the app
 
 to edit these preferences, open a second Choose Switcher. Or in Services menu of any app, select Services>Open Choose Switcher Settings. all preferences can be deleted with defaults read ~/Library/Preferences/com.entonos.ChooseSwitcher.plist 
