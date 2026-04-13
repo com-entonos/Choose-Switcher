@@ -6,11 +6,13 @@
 //
 
 import SwiftUI
+import OSLog
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Logger.log("Choose Switcher has started.")
         NSApp.servicesProvider = self
         checkPermissions()
         setupObserver()
@@ -18,19 +20,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // This shows the settings when you "open" the app again
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Logger.log("showing Settings from double start.", category: .ui)
         showSettings()
         return true
     }
     
     @objc func serviceToSetting(_ pasteboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        Logger.log("showing Settings from Services.", category: .ui)
         showSettings()
     }
 
     @objc func undoSwitch(_ pasteboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
+        Logger.log("trying to do Undo from Services.", category: .ui)
         SpaceManager.shared.performUndo()
     }
     
     private func setupObserver() {
+        Logger.log("setting up observer for apps.")
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main
@@ -63,6 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let isTrusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
         
         if !isTrusted {
+            Logger.log("lacking Accessibility permision", level: .error)
             // The system prompt is now on screen.
             // We show our own alert to explain why we are closing.
             
@@ -80,5 +87,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             NSApp.terminate(nil)  // abort without permissions
         }
+        Logger.log("have Accessibility permisions")
+    }
+}
+
+extension Logger {
+    private static var subsystem = Bundle.main.bundleIdentifier!
+    static let scriptExecution = Logger(subsystem: subsystem, category: "ScriptExecution")
+    static let ui = Logger(subsystem: subsystem, category: "UserInterface")
+    static let lifecycle = Logger(subsystem: subsystem, category: "Lifecycle")
+    
+    static func log(_ message: String, category: Logger = .lifecycle, level: OSLogType = .info) {
+        // 1. Send to System Console
+        switch level {
+        case .debug: category.debug("\(message)")
+        case .error: category.error("\(message)")
+        case .fault: category.fault("\(message)")
+        default: category.info("\(message)")
+        }
+        
+        // 2. Print to Xcode Console
+        let emoji = level == .error || level == .fault ? "❌" : "ℹ️"
+        print("\(emoji) [\(level)] \(message)")
     }
 }

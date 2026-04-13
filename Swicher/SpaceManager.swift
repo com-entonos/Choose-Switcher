@@ -7,6 +7,7 @@
 
 import Cocoa
 import Combine
+import OSLog
 
 class SpaceManager: ObservableObject {
     static let shared = SpaceManager()
@@ -17,8 +18,6 @@ class SpaceManager: ObservableObject {
 
     // for 'undo'
     enum LastAction : Int, CaseIterable { case  onScreen = 0, override, switched }
-    
-
     private var previousLastActiveApp: NSRunningApplication?
     private var lastActiveApp: NSRunningApplication? {
         didSet { previousLastActiveApp = oldValue }
@@ -32,33 +31,36 @@ class SpaceManager: ObservableObject {
     }
     
     func handleActivation(app: NSRunningApplication) {
+        let m0 = "\(app.localizedName ?? "<none>") (\(app.bundleIdentifier ?? "<noID>"))"
         // do nothing if new app Bundle is our Bundle or lastActiveApp bundle
-        print("\( (app.bundleIdentifier != Bundle.main.bundleIdentifier && app.bundleIdentifier != lastActiveApp?.bundleIdentifier ?? "") ? "" : "REJECTED: " )bid=\(app.bundleIdentifier)(\(app.processIdentifier)) last=\(lastActiveApp?.bundleIdentifier) plast-\(previousLastActiveApp?.bundleIdentifier)")
+        Logger.log("app activation: \(m0) \((app.bundleIdentifier != Bundle.main.bundleIdentifier && app.bundleIdentifier != lastActiveApp?.bundleIdentifier ?? "nil") ? "" : "REJECTED: ")last=\(lastActiveApp?.bundleIdentifier ?? "<noID>") plast=\(previousLastActiveApp?.bundleIdentifier ?? "<noID>")", level: .debug)
         guard let bid = app.bundleIdentifier, bid != Bundle.main.bundleIdentifier, bid != lastActiveApp?.bundleIdentifier ?? "" else { return }
+        
         
         if hasWindowInCurrentSpace(pid: app.processIdentifier) {  // if in current Space, do nothing
             lastAction = .onScreen
             if forceSwitch[bid] ?? false { lastActiveApp = app }
+            Logger.log("has on screen windows\(forceSwitch[bid] ?? false ? ", updated lastActiveApp" : "")", level: .debug)
             return
         }
         
-        print("forceSwitch[\(bid)]: \(forceSwitch[bid] == nil ? "nil" : forceSwitch[bid]! ? "true" : "false")")
         if forceSwitch[bid] == nil && !justOnce {    // go ask
-            print("need to call showPrompt")
+            Logger.log("need to call showPrompt", level: .debug)
             justOnce = showPrompt(app: app)
         }
         
-        print("justOnce: \(justOnce), forceSwitch[\(bid)]: \(forceSwitch[bid] == nil ? "nil" : forceSwitch[bid]! ? "true" : "false")\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier != bid ? ", app not in front!" : "")")
         if NSWorkspace.shared.frontmostApplication?.bundleIdentifier != bid && ( forceSwitch[bid] ?? false) {
-            print("need to activate \(app.localizedName ?? "") (\(app.processIdentifier))")
+            Logger.log("first need to activate instead of \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "<none>") (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<noID>"))", level: .debug)
             app.activate()
         } else {
             if justOnce || forceSwitch[bid] ?? false {
+                Logger.log("trying to switch (.switched) Space... (justOnce? \(justOnce), forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
                 lastAction = .switched
                 justOnce = false
                 clickDockIcon(appName: app.localizedName ?? "")
             } else {
                 lastAction = .override
+                Logger.log("does not switch (.override) Space (forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
             }
             lastActiveApp = app
         }
@@ -66,8 +68,8 @@ class SpaceManager: ObservableObject {
     
     private func hasWindowInCurrentSpace(pid: Int32) -> Bool {
         let windowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+        Logger.log("  number of windows for \(pid): \(windowList.count(where: { win in (win[kCGWindowOwnerPID as String] as? Int32) == pid}))", level: .debug)
         // return if windowList contains any windows with our new PID
-        print("number of windows for \(pid): \(windowList.count(where: { win in (win[kCGWindowOwnerPID as String] as? Int32) == pid}))")
         return windowList.contains { ($0[kCGWindowOwnerPID as String] as? Int32) == pid }
         // return if windList contains any windows with our new PID AND size of the windows are > 100 (avoids small non-user windows)
         /*
@@ -91,7 +93,7 @@ class SpaceManager: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
     
-        print("showPrompt: \(response)")
+        Logger.log("showPrompt: \(response == .alertFirstButtonReturn ? "switch" : "")\(response == .alertSecondButtonReturn ? "stay" : "")\(response == .alertThirdButtonReturn ? "just once" : "") button choosen", category: .ui, level: .debug)
         if response == .alertSecondButtonReturn {
             forceSwitch[app.bundleIdentifier!] = false
         } else if response == .alertFirstButtonReturn {
@@ -104,17 +106,21 @@ class SpaceManager: ObservableObject {
     func performUndo() {
         guard let currentApp = NSWorkspace.shared.frontmostApplication else { return }
         
+        Logger.log("try undo of \(lastAction), curr: \(currentApp.localizedName ?? ""), last: \(lastActiveApp?.localizedName ?? ""), prev: \(previousLastActiveApp?.localizedName ?? "") \(lastAction == .switched && previousLastActiveApp != nil && previousLastActiveApp?.bundleIdentifier != currentApp.bundleIdentifier)")
         switch lastAction {
         case .switched:
             if let prevApp = previousLastActiveApp, prevApp.bundleIdentifier != currentApp.bundleIdentifier {  // want to try to switch back to the previous app
+                Logger.log("trying to activate prev", level: .debug)
                 lastActiveApp = currentApp
                 prevApp.activate()
             }
         case .override:
+            Logger.log("trying to switch Space (was .override) back to curr", level: .debug)
             lastAction = .switched
             lastActiveApp = currentApp
             clickDockIcon(appName: currentApp.localizedName ?? "")
         case .onScreen:
+            Logger.log("do nothing (.onScreen)",level: .debug)
             // do nothing
             break
         }
@@ -123,21 +129,25 @@ class SpaceManager: ObservableObject {
     func clickDockIcon(appName: String) {
         let scriptSource = appleScript(appName: appName)
         
-        print("script: \(scriptSource)")
+        Logger.log("script for Dock icon: \(scriptSource)", category: .scriptExecution, level: .debug)
         /* for debugging */
         if let script = NSAppleScript(source: scriptSource) {
             var error: NSDictionary?
             script.executeAndReturnError(&error)
             
             if let err = error {
-                print("AS error: \(err)")
+                Logger.log("AS error: \(err)", category: .scriptExecution, level: .error)
                 let errorCode = err["NSAppleScriptErrorNumber"] as? Int
                 
                 if errorCode == -1743 {
+                    Logger.log("  errorCode of -1743, trying to force...", category: .scriptExecution, level: .error)
                     ForcePermissionClickDockIcon(appName: appName)
                 } else {
+                    Logger.log("  unknown error, abort!", category: .scriptExecution, level: .fault)
                     handleUnrecoverableError(message: "Allow Choose Switcher to automate System Events. In System Preferences...>Privacy & Security>Automation>Choose Switcher check System Events")
                 }
+            } else {
+                Logger.log("script for Dock icon worked!", category: .scriptExecution, level: .debug)
             }
         } /* end debug */
     }
@@ -158,31 +168,29 @@ class SpaceManager: ObservableObject {
     
     func ForcePermissionClickDockIcon(appName: String) {
         let script = appleScript(appName: appName)
-        print("force script: \(script)")
         
-        // Using a shell process forces macOS to recognize the external interaction
-        /*let process = Process()
-        process.launchPath = "/usr/bin/osascript"
-        process.arguments = ["-e", script]*/
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments = ["-e", script]
         
         let errorPipe = Pipe()
         process.standardError = errorPipe
+        Logger.log("Attempting to force process delivering osascript: \(script)", category: .scriptExecution, level: .debug)
         
-        // This will trigger the "Choose Switcher wants to control System Events" prompt
-        /*process.launch()*/
         do {
             try process.run()
             process.waitUntilExit()
-            if process.terminationStatus != 0 {
+            if process.terminationStatus == 0 {
+                Logger.log("Forced osascript ran successfully.", category: .scriptExecution, level: .debug)
+            } else {
                 let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                let err = String(data: data, encoding: .utf8)
-                handleUnrecoverableError(message: "osascript error: \(err ?? "<none>") Perhaps in System Preferences...>Privacy & Security>Automation>Choose Switcher check System Events")
+                let err = String(data: data, encoding: .utf8) ?? "Unknown error"
+                Logger.log("Fatal osascript failed (Status=\(process.terminationStatus)): \(err)", category: .scriptExecution, level: .fault)
+                handleUnrecoverableError(message: "Fatal osascript error: \(err) Perhaps in System Preferences...>Privacy & Security>Automation>Choose Switcher check System Events")
             }
         } catch {
-            handleUnrecoverableError(message: "osascript failled to launch error: \(error) Perhaps in System Preferences...>Privacy & Security>Automation>Choose Switcher check System Events")
+            Logger.log("Fatal force process error: \(error.localizedDescription)", category: .scriptExecution, level: .fault)
+            handleUnrecoverableError(message: "Fatal failed to launch error: \(error.localizedDescription) Perhaps in System Preferences...>Privacy & Security>Automation>Choose Switcher check System Events")
         }
     }
     
