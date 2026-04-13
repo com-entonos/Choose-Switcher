@@ -11,6 +11,7 @@ when switching apps, one of three things will happen:
        1. Always Switch
        2. Stay Here
        3. Just Once
+          
      selectiong the first choice with switch to a Space that was the last active window of the app. the second choice and the Space will not change. In either case that preference is stored for that app. the last option will switch to a Space with open windows for that app but will not record the preference.
   4. The Space will switch or not according to the preference for the app
 
