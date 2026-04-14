@@ -108,13 +108,13 @@ class SpaceManager: ObservableObject {
         
         doingUndo = forceSwitch[prevApp.bundleIdentifier!] != nil
         if doingUndo {
-            if forceSwitch[currentApp.bundleIdentifier!] == false {
-                lastActiveApp = prevApp
-                currentApp.activate()
-            } else {
+   //         if forceSwitch[currentApp.bundleIdentifier!] == false {
+   //             lastActiveApp = prevApp
+   //             currentApp.activate()
+   //         } else {
                 previousLastActiveApp = lastActiveApp
                 prevApp.activate()
-            }
+   //         }
         }
     }
     
