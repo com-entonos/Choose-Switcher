@@ -17,12 +17,10 @@ class SpaceManager: ObservableObject {
     }
 
     // for 'undo'
-    enum LastAction : Int, CaseIterable { case  onScreen = 0, override, switched }
     private var previousLastActiveApp: NSRunningApplication?
     private var lastActiveApp: NSRunningApplication? {
         didSet { previousLastActiveApp = oldValue }
     }
-    private var lastAction = LastAction.onScreen
     private var justOnce = false
     private var doingUndo = false
     
@@ -32,17 +30,18 @@ class SpaceManager: ObservableObject {
     }
     
     func handleActivation(app: NSRunningApplication) {
-        let m0 = "\(app.localizedName ?? "<none>") (\(app.bundleIdentifier ?? "<noID>"))"
+        let bid = app.bundleIdentifier ?? "<noID>"
+        let name = app.localizedName ?? "<none>"
+        let lastBid = lastActiveApp?.bundleIdentifier ?? "<noID>"
+        let prevBid = previousLastActiveApp?.bundleIdentifier ?? "<noID>"
         // do nothing if new app Bundle is our Bundle or lastActiveApp bundle
-        Logger.log("app activation: \(m0) \((app.bundleIdentifier != Bundle.main.bundleIdentifier && app.bundleIdentifier != lastActiveApp?.bundleIdentifier ?? "nil") ? "" : "REJECTED: ")last=\(lastActiveApp?.bundleIdentifier ?? "<noID>") plast=\(previousLastActiveApp?.bundleIdentifier ?? "<noID>")", level: .debug)
-        guard let bid = app.bundleIdentifier, bid != Bundle.main.bundleIdentifier, bid != lastActiveApp?.bundleIdentifier ?? "" else { return }
+        Logger.log("\((bid != Bundle.main.bundleIdentifier && bid != lastBid) ? "" : "REJECTED: ")app activation: \(name) (\(bid)) last=\(lastBid) plast=\(prevBid)", level: .debug)
+        guard let bid = app.bundleIdentifier, bid != Bundle.main.bundleIdentifier, bid != lastBid else { return }
         
         
         if hasWindowInCurrentSpace(pid: app.processIdentifier) {  // if in current Space, do nothing
-            lastAction = .onScreen; doingUndo = false
-            //if forceSwitch[bid] ?? false { lastActiveApp = app }
-            //Logger.log("has on screen windows\(forceSwitch[bid] ?? false ? ", updated lastActiveApp" : "")", level: .debug)
-            if forceSwitch[bid] != nil { lastActiveApp = app }
+            if forceSwitch[bid] != nil || doingUndo { lastActiveApp = app }
+            doingUndo = false
             Logger.log("has on screen windows, \(forceSwitch[bid] == nil ? "would ask to" : (forceSwitch[bid]! ? "would" : "would not")) switch", level: .debug)
             return
         }
@@ -52,17 +51,16 @@ class SpaceManager: ObservableObject {
             justOnce = showPrompt(app: app)
         }
         
-        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier != bid && ( forceSwitch[bid] ?? false) {
+        let toSwitch = justOnce || doingUndo || forceSwitch[bid] ?? false
+        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier != bid && toSwitch {
             Logger.log("first need to activate instead of \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "<none>") (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<noID>"))", level: .debug)
             app.activate()
         } else {
-            if justOnce || doingUndo || forceSwitch[bid] ?? false {
+            if toSwitch {
                 if justOnce { forceSwitch.removeValue(forKey: bid); justOnce = false }
-                lastAction = .switched
                 Logger.log("trying to switch (.switched) Space... (forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
                 clickDockIcon(appName: app.localizedName ?? "")
             } else {
-                lastAction = .override
                 Logger.log("does not switch (.override) Space (forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
             }
             lastActiveApp = app; doingUndo = false
@@ -105,12 +103,18 @@ class SpaceManager: ObservableObject {
     func performUndo() { // active app is us because of Services, so don't bother.
         guard let currentApp = lastActiveApp, let prevApp = previousLastActiveApp, currentApp != prevApp, let _ = prevApp.bundleIdentifier else { return }
         
-        Logger.log("try undo of \(lastAction), \"curr\": \(currentApp.localizedName ?? ""), \"last\": \(prevApp.localizedName ?? "") !=? \(prevApp.bundleIdentifier != currentApp.bundleIdentifier)",level: .debug)
+        Logger.log("try undo: \"curr\": \(currentApp.localizedName ?? "") back to \"last\": \(prevApp.localizedName ?? "") !=? \(prevApp.bundleIdentifier != currentApp.bundleIdentifier)",level: .debug)
+        
         
         doingUndo = forceSwitch[prevApp.bundleIdentifier!] != nil
         if doingUndo {
-            previousLastActiveApp = lastActiveApp
-            prevApp.activate()
+            if forceSwitch[currentApp.bundleIdentifier!] == false {
+                lastActiveApp = prevApp
+                currentApp.activate()
+            } else {
+                previousLastActiveApp = lastActiveApp
+                prevApp.activate()
+            }
         }
     }
     
