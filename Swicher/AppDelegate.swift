@@ -12,7 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var window: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Logger.log("Choose Switcher has started.")
+        Logger.log("Choose Switcher has started")
         NSApp.servicesProvider = self
         checkPermissions()
         setupObserver()
@@ -20,23 +20,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     // This shows the settings when you "open" the app again
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        Logger.log("showing Settings from double start.", category: .ui, level: .debug)
+        Logger.log("showing Settings from double start", category: .ui, level: .debug)
         showSettings()
         return true
     }
     
     @objc func serviceToSetting(_ pasteboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        Logger.log("showing Settings from Services.", category: .ui, level: .debug)
+        Logger.log("showing Settings from Services", category: .ui, level: .debug)
         showSettings()
     }
 
     @objc func undoSwitch(_ pasteboard: NSPasteboard, userData: String, error: AutoreleasingUnsafeMutablePointer<NSString>) {
-        Logger.log("trying to do Undo from Services.", category: .ui, level: .debug)
+        Logger.log("trying to do Undo from Services", category: .ui, level: .debug)
         SpaceManager.shared.performUndo()
     }
     
     private func setupObserver() {
-        Logger.log("setting up observer for apps.")
+        Logger.log("setting up observer for apps")
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.didActivateApplicationNotification,
             object: nil, queue: .main
@@ -100,10 +100,10 @@ extension Logger {
     static func log(_ message: String, category: Logger = .lifecycle, level: OSLogType = .info) {
         // 1. Send to System Console
         switch level {
-        case .debug: category.debug("\(message)")
-        case .error: category.error("\(message)")
-        case .fault: category.fault("\(message)")
-        default: category.info("\(message)")
+        case .debug: category.debug("\(message, privacy: .public)")
+        case .error: category.error("\(message, privacy: .public)")
+        case .fault: category.fault("\(message, privacy: .public)")
+        default: category.info("\(message, privacy: .public)")
         }
         
         // 2. Print to Xcode Console
