@@ -53,13 +53,18 @@ struct ContentView: View {
                 }
             }
             Divider()
-            Button("Set Keyboard Shortcut...") {
-                // This URL jumps directly to the Services shortcuts page
-                let url = URL(string: "x-apple.systempreferences:com.apple.preference.keyboard?Shortcuts")!
-                NSWorkspace.shared.open(url)
+            HStack {
+                Button("Set Keyboard Shortcut...") {
+                    // This URL jumps directly to the Services shortcuts page
+                    let url = URL(string: "x-apple.systempreferences:com.apple.preference.keyboard?Shortcuts")!
+                    NSWorkspace.shared.open(url)
+                }
+                .controlSize(.small)
+                .help("To set shortcut: System Settings...>Keyboard>Keyboard Shortcuts...>Services>General. Recommended: ⌥`")
+                
+                //Spacer()
+                Text("then select Services on left, open General on right then double-click to set").font(Font.system(size: 11, design: .default))
             }
-            .controlSize(.small)
-            .help("To set shortcut: System Settings...>Keyboard>Keyboard Shortcuts...>Services>General. Recommended: ⌥`")
         }
         .padding()
         .frame(width: 500, height: 400)
