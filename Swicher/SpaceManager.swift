@@ -24,6 +24,7 @@ class SpaceManager: ObservableObject {
     }
     private var lastAction = LastAction.onScreen
     private var justOnce = false
+    private var doingUndo = false
     
     init() {
         self.forceSwitch = UserDefaults.standard.dictionary(forKey: "ForceSwitch") as? [String: Bool] ??
@@ -38,11 +39,11 @@ class SpaceManager: ObservableObject {
         
         
         if hasWindowInCurrentSpace(pid: app.processIdentifier) {  // if in current Space, do nothing
-            lastAction = .onScreen
+            lastAction = .onScreen; doingUndo = false
             //if forceSwitch[bid] ?? false { lastActiveApp = app }
             //Logger.log("has on screen windows\(forceSwitch[bid] ?? false ? ", updated lastActiveApp" : "")", level: .debug)
             if forceSwitch[bid] != nil { lastActiveApp = app }
-            Logger.log("has on screen windows, \(forceSwitch[bid] == nil ? "will ask to" : (forceSwitch[bid]! ? "will" : "will not")) switch", level: .debug)
+            Logger.log("has on screen windows, \(forceSwitch[bid] == nil ? "would ask to" : (forceSwitch[bid]! ? "would" : "would not")) switch", level: .debug)
             return
         }
         
@@ -55,7 +56,7 @@ class SpaceManager: ObservableObject {
             Logger.log("first need to activate instead of \(NSWorkspace.shared.frontmostApplication?.localizedName ?? "<none>") (\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "<noID>"))", level: .debug)
             app.activate()
         } else {
-            if forceSwitch[bid] ?? false {
+            if justOnce || doingUndo || forceSwitch[bid] ?? false {
                 if justOnce { forceSwitch.removeValue(forKey: bid); justOnce = false }
                 lastAction = .switched
                 Logger.log("trying to switch (.switched) Space... (forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
@@ -64,7 +65,7 @@ class SpaceManager: ObservableObject {
                 lastAction = .override
                 Logger.log("does not switch (.override) Space (forceSwitch? \(forceSwitch[bid] != nil ? (forceSwitch[bid]! ? "true" : "false") : "nil"))",level: .debug)
             }
-            lastActiveApp = app
+            lastActiveApp = app; doingUndo = false
         }
     }
     
@@ -101,26 +102,15 @@ class SpaceManager: ObservableObject {
     }
     
     // Logic for the new Undo/Force shortcut
-    func performUndo() {
-        guard let currentApp = NSWorkspace.shared.frontmostApplication, let prevApp = previousLastActiveApp else { return }
+    func performUndo() { // active app is us because of Services, so don't bother.
+        guard let currentApp = lastActiveApp, let prevApp = previousLastActiveApp, currentApp != prevApp, let _ = prevApp.bundleIdentifier else { return }
         
-        Logger.log("try undo of \(lastAction), curr: \(currentApp.localizedName ?? ""), last: \(lastActiveApp?.localizedName ?? ""), prev: \(prevApp.localizedName ?? "") \(lastAction == .switched && prevApp.bundleIdentifier != currentApp.bundleIdentifier)",level: .debug)
-        switch lastAction {
-        case .switched:
-            if prevApp.bundleIdentifier != currentApp.bundleIdentifier {
-                Logger.log("trying to activate \(prevApp.localizedName ?? "")", level: .debug)
-                lastActiveApp = currentApp
-                prevApp.activate()
-            }
-        case .override:
-            Logger.log("trying to switch Space (was .override) back to \(currentApp.localizedName ?? "")", level: .debug)
-            lastAction = .switched
-            lastActiveApp = currentApp
-            clickDockIcon(appName: currentApp.localizedName ?? "")
-        case .onScreen:
-            Logger.log("do nothing (.onScreen)", level: .debug)
-            // do nothing
-            break
+        Logger.log("try undo of \(lastAction), \"curr\": \(currentApp.localizedName ?? ""), \"last\": \(prevApp.localizedName ?? "") !=? \(prevApp.bundleIdentifier != currentApp.bundleIdentifier)",level: .debug)
+        
+        doingUndo = forceSwitch[prevApp.bundleIdentifier!] != nil
+        if doingUndo {
+            previousLastActiveApp = lastActiveApp
+            prevApp.activate()
         }
     }
     
@@ -179,7 +169,7 @@ class SpaceManager: ObservableObject {
             try process.run()
             process.waitUntilExit()
             if process.terminationStatus == 0 {
-                Logger.log("Forced osascript ran successfully.", category: .scriptExecution, level: .debug)
+                Logger.log("Forced osascript ran successfully", category: .scriptExecution, level: .debug)
             } else {
                 let data = errorPipe.fileHandleForReading.readDataToEndOfFile()
                 let err = String(data: data, encoding: .utf8) ?? "Unknown error"
