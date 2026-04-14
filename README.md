@@ -1,6 +1,6 @@
 Spaces, screens and switching apps on macOS is annoying. No combination of settings achieve something useful for me.
 
-This is useful since some apps (mail, activity monitor, ...) i do have pinned to certain Spaces, while other apps (terminal, xcode, safari, ...) have multiple open windows and i don't want to jump to the Space with the last used window since i probably want to open a new window instead. a Service is provided (Undo Choose Switcher) which in this case, would jump to the Space with the last used window. Similarily if you switch to an app and it switches Spaces, the same Service would transport you back to the previous Space. 
+This is useful since some apps (mail, activity monitor, ...) i do have pinned to certain Spaces, while other apps (terminal, xcode, safari, ...) have multiple open windows and i don't want to jump to the Space with the last used window since i probably want to open a new window instead. a Service is provided (Undo Choose Switcher) which in this case, would jump to the Space with the last used window (actually it doesn't). Similarily if you switch to an app and it switches Spaces, the same Service would transport you back to the previous Space. 
 
 
 
