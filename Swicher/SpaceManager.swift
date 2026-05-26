@@ -111,7 +111,7 @@ class SpaceManager: ObservableObject {
         Logger.log("pid \(pid) has \(pidWIDs.count) windows: \(pidWIDs)", level: .debug)
 
         // Find which space UUID contains one of our window IDs
-        var targetUUID: String? = nil
+        var targetUUID: String? = nil   // TODO if more than one Space has a window, perhaps take the one with the most windows?
         for prop in spaceProps {
             guard let uuid    = prop["name"] as? String,
                   let windows = prop["windows"] as? [Int]
@@ -127,6 +127,9 @@ class SpaceManager: ObservableObject {
             return nil
         }
 
+        
+        // below is assuming something about the order in the com.apple.spaces plist, it seems. it works currently, but surprised the order is correct or that the dictionary doesn't scramble it. perhaps the magic of enumerated...
+        
         // With "Displays have separate spaces" ON, ctrl+N numbers spaces globally
         // across all displays in Mission Control order — laptop first, then external.
         // We walk monitors in order, accumulating an offset, so the external display's
@@ -152,14 +155,16 @@ class SpaceManager: ObservableObject {
     /// Sends ctrl+N via AppleScript to switch to space N on the active display.
     private func switchViaAppleScript(spaceNumber: Int) {
         // Key codes for ctrl+1 through ctrl+12
-        let keyCodes = [18, 19, 20, 21, 23, 22, 26, 28, 25, 29, 27, 30]
-        guard spaceNumber >= 1, spaceNumber <= keyCodes.count else {
+        let keyCodes = [18, 19, 20, 21, 23, 22, 26, 28, 25, 29, 27, 24] // this is 1-9,0,-,= which is the top row of US keyboard
+        let keys = ["control down", "{control down, option down}", "{control down, option down, shift down}", "{control down, option down, shift down, command down}"]
+        guard spaceNumber >= 1, spaceNumber <= keyCodes.count * keys.count else {
             Logger.log("space number \(spaceNumber) out of range", level: .error)
             return
         }
-        let keyCode = keyCodes[spaceNumber - 1]
+        let keyCode = keyCodes[(spaceNumber - 1) % 12]
+        let key = keys[min(keys.count - 1, (spaceNumber - 1) / 12)]
         let script  = """
-        tell application "System Events" to key code \(keyCode) using control down
+        tell application "System Events" to key code \(keyCode) using \(key) down
         """
         Logger.log("AppleScript: ctrl+\(spaceNumber) (key code \(keyCode))", category: .scriptExecution, level: .debug)
         if let as_ = NSAppleScript(source: script) {
@@ -210,9 +215,8 @@ class SpaceManager: ObservableObject {
     }
 
     // MARK: - Dock click (fallback)
-
-    func clickDockIcon(appName: String) {
-        let script = """
+    private func AScript(appName: String) -> String {
+        return """
         tell application "System Events"
             tell process "Dock"
                 repeat with aList in every list
@@ -226,6 +230,9 @@ class SpaceManager: ObservableObject {
             end tell
         end tell
         """
+    }
+    func clickDockIcon(appName: String) {
+        let script = AScript(appName: appName)
         Logger.log("Dock click script for: \(appName)", category: .scriptExecution, level: .debug)
         if let as_ = NSAppleScript(source: script) {
             var err: NSDictionary?
@@ -243,20 +250,7 @@ class SpaceManager: ObservableObject {
     }
 
     func ForcePermissionClickDockIcon(appName: String) {
-        let script = """
-        tell application "System Events"
-            tell process "Dock"
-                repeat with aList in every list
-                    repeat with anItem in every UI element of aList
-                        if name of anItem is "\(appName)" then
-                            click anItem
-                            return
-                        end if
-                    end repeat
-                end repeat
-            end tell
-        end tell
-        """
+        let script = AScript(appName: appName)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
         process.arguments     = ["-e", script]
