@@ -110,24 +110,26 @@ class SpaceManager: ObservableObject {
         }
         Logger.log("pid \(pid) has \(pidWIDs.count) windows: \(pidWIDs)", level: .debug)
 
-        // Find which space UUID contains one of our window IDs
-        var targetUUID: String? = nil   // TODO if more than one Space has a window, perhaps take the one with the most windows?
+        // Find which space UUID contains the most windows belonging to this pid.
+        var bestUUID:  String? = nil
+        var bestCount = 0
         for prop in spaceProps {
             guard let uuid    = prop["name"] as? String,
                   let windows = prop["windows"] as? [Int]
             else { continue }
-            if windows.contains(where: { pidWIDs.contains($0) }) {
-                targetUUID = uuid
-                Logger.log("found app in space uuid=\(uuid)", level: .debug)
-                break
+            let count = windows.filter { pidWIDs.contains($0) }.count
+            if count > bestCount {
+                bestCount = count
+                bestUUID  = uuid
+                Logger.log("candidate space uuid=\(uuid) match count=\(count)", level: .debug)
             }
         }
-        guard let targetUUID else {
+        guard let targetUUID = bestUUID else {
             Logger.log("app not found in any Space Properties entry", level: .debug)
             return nil
         }
+        Logger.log("selected space uuid=\(targetUUID) with \(bestCount) matching windows", level: .debug)
 
-        
         // below is assuming something about the order in the com.apple.spaces plist, it seems. it works currently, but surprised the order is correct or that the dictionary doesn't scramble it. perhaps the magic of enumerated...
         
         // With "Displays have separate spaces" ON, ctrl+N numbers spaces globally
@@ -289,5 +291,3 @@ class SpaceManager: ObservableObject {
         }
     }
 }
-
-
