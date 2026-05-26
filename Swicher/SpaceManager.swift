@@ -164,7 +164,7 @@ class SpaceManager: ObservableObject {
         let keyCode = keyCodes[(spaceNumber - 1) % 12]
         let key = keys[min(keys.count - 1, (spaceNumber - 1) / 12)]
         let script  = """
-        tell application "System Events" to key code \(keyCode) using \(key) down
+        tell application "System Events" to key code \(keyCode) using \(key)
         """
         Logger.log("AppleScript: ctrl+\(spaceNumber) (key code \(keyCode))", category: .scriptExecution, level: .debug)
         if let as_ = NSAppleScript(source: script) {
