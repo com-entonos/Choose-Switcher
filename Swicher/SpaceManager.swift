@@ -18,6 +18,12 @@ class SpaceManager: ObservableObject {
     private var lastActiveApp: NSRunningApplication? {
         didSet { previousLastActiveApp = oldValue }
     }
+    private var previousLastActiveSpace: Int?
+    private var lastActiveSpace: Int? {
+        didSet { previousLastActiveSpace = oldValue
+    Logger.log("  PREVIOUSLASTACTIVESPACE = \(previousLastActiveSpace ?? 0)", level: .debug)}
+    }
+    var goingToApp : NSRunningApplication?
     private var justOnce  = false
     private var doingUndo = false
 
@@ -35,14 +41,21 @@ class SpaceManager: ObservableObject {
         let name     = app.localizedName ?? "<none>"
         let lastBid  = lastActiveApp?.bundleIdentifier ?? "<noID>"
         let prevBid  = previousLastActiveApp?.bundleIdentifier ?? "<noID>"
+        let goingToBid = goingToApp?.bundleIdentifier ?? bid
 
-        Logger.log("\((bid != Bundle.main.bundleIdentifier && bid != lastBid) ? "" : "REJECTED: ")app activation: \(name) (\(bid)) last=\(lastBid) plast=\(prevBid)", level: .debug)
-        guard bid != Bundle.main.bundleIdentifier, bid != lastBid else { return }
+        Logger.log("\((bid != Bundle.main.bundleIdentifier && bid != lastBid && bid != "com.apple.loginwindow" && bid == goingToBid) ? "" : "REJECTED: ")app activation: \(name) (\(bid)) goingToBid=\(goingToBid) last=\(lastBid) plast=\(prevBid)", level: .debug)
+        guard bid != Bundle.main.bundleIdentifier, bid != lastBid, bid != "com.apple.loginwindow", bid == goingToBid else { return }
 
         if hasWindowInCurrentSpace(pid: app.processIdentifier) {
-            if forceSwitch[bid] != nil || doingUndo { lastActiveApp = app }
+            if doingUndo, let spaceNumber = previousLastActiveSpace {
+                lastActiveApp = app
+                switchToSpace(app, spaceNumber)
+            } else if forceSwitch[bid] != nil || doingUndo {
+                lastActiveApp = app
+                previousLastActiveSpace = lastActiveSpace
+            }
             doingUndo = false
-            Logger.log("has on-screen windows, \(forceSwitch[bid] == nil ? "would ask to" : (forceSwitch[bid]! ? "would" : "would not")) switch", level: .debug)
+            Logger.log("  has on-screen windows, \(forceSwitch[bid] == nil ? "would ask to" : (forceSwitch[bid]! ? "would" : "would not")) switch", level: .debug)
             return
         }
 
@@ -58,10 +71,14 @@ class SpaceManager: ObservableObject {
         } else {
             if toSwitch {
                 if justOnce { forceSwitch.removeValue(forKey: bid); justOnce = false }
-                Logger.log("trying to switch Space...", level: .debug)
-                switchToApp(app)
+                Logger.log("  trying to switch Space...", level: .debug)
+                if doingUndo, let space = previousLastActiveSpace {
+                    switchToSpace(app, space)
+                } else {
+                    switchToApp(app)
+                }
             } else {
-                Logger.log("not switching", level: .debug)
+                Logger.log("  not switching", level: .debug)
             }
             lastActiveApp = app; doingUndo = false
         }
@@ -73,19 +90,25 @@ class SpaceManager: ObservableObject {
     /// determines its 1-based ctrl+number position, and sends the keystroke.
     private func switchToApp(_ app: NSRunningApplication) {
         guard let spaceNumber = spaceNumber(for: app.processIdentifier) else {
-            Logger.log("could not find space number, falling back to Dock click", level: .debug)
+            Logger.log("!! could not find space number, falling back to Dock click", level: .debug)
             clickDockIcon(appName: app.localizedName ?? "")
             return
         }
-        Logger.log("switching to space \(spaceNumber) via ctrl+\(spaceNumber)", level: .debug)
+        switchToSpace(app, spaceNumber)
+    }
+    private func switchToSpace(_ app: NSRunningApplication, _ spaceNumber: Int) {
+        lastActiveSpace = spaceNumber
+        Logger.log("  switching to space \(spaceNumber) for \(app.localizedName ?? "<none>")", level: .debug)
+        goingToApp = app
         switchViaAppleScript(spaceNumber: spaceNumber)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { app.activate() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { app.activate(); self.goingToApp = nil }
     }
 
     /// Returns the 1-based Mission Control space number for ctrl+N shortcut.
     private func spaceNumber(for pid: Int32) -> Int? {
-        guard let prefs  = UserDefaults(suiteName: "com.apple.spaces"),
-              let config = prefs.dictionary(forKey: "SpacesDisplayConfiguration"),
+        let prefs  = UserDefaults(suiteName: "com.apple.spaces")
+        prefs?.synchronize()  // hopefully force current info...
+        guard let config = prefs?.dictionary(forKey: "SpacesDisplayConfiguration"),
               let mgmt   = config["Management Data"] as? [String: Any],
               let monitors = mgmt["Monitors"] as? [[String: Any]],
               let spaceProps = config["Space Properties"] as? [[String: Any]]
@@ -105,10 +128,10 @@ class SpaceManager: ObservableObject {
             return wid
         })
         guard !pidWIDs.isEmpty else {
-            Logger.log("no windows found for pid \(pid)", level: .debug)
+            Logger.log("!!  no windows found for pid \(pid)", level: .debug)
             return nil
         }
-        Logger.log("pid \(pid) has \(pidWIDs.count) windows: \(pidWIDs)", level: .debug)
+        Logger.log("    pid \(pid) has \(pidWIDs.count) windows", level: .debug)
 
         // Find which space UUID contains the most windows belonging to this pid.
         var bestUUID:  String? = nil
@@ -121,14 +144,14 @@ class SpaceManager: ObservableObject {
             if count > bestCount {
                 bestCount = count
                 bestUUID  = uuid
-                Logger.log("candidate space uuid=\(uuid) match count=\(count)", level: .debug)
+                Logger.log("     candidate space uuid=\(uuid) match count=\(count)", level: .debug)
             }
         }
         guard let targetUUID = bestUUID else {
-            Logger.log("app not found in any Space Properties entry", level: .debug)
+            Logger.log("  app not found in any Space Properties entry", level: .debug)
             return nil
         }
-        Logger.log("selected space uuid=\(targetUUID) with \(bestCount) matching windows", level: .debug)
+        Logger.log("    selected space uuid=\(targetUUID) with \(bestCount) matching windows", level: .debug)
 
         // below is assuming something about the order in the com.apple.spaces plist, it seems. it works currently, but surprised the order is correct or that the dictionary doesn't scramble it. perhaps the magic of enumerated...
         
@@ -143,14 +166,14 @@ class SpaceManager: ObservableObject {
                 let uuid = space["uuid"] as? String ?? ""
                 if uuid == targetUUID {
                     let spaceNum = globalOffset + i + 1
-                    Logger.log("target space global #\(spaceNum) (display offset \(globalOffset), local index \(i))", level: .debug)
+                    Logger.log("    target space global #\(spaceNum) (display offset \(globalOffset), local index \(i))", level: .debug)
                     return spaceNum
                 }
             }
             globalOffset += spaces.count
         }
 
-        Logger.log("target uuid \(targetUUID) not found in any monitor", level: .debug)
+        Logger.log("!!  target uuid \(targetUUID) not found in any monitor", level: .debug)
         return nil
     }
 
@@ -168,11 +191,11 @@ class SpaceManager: ObservableObject {
         let script  = """
         tell application "System Events" to key code \(keyCode) using \(key)
         """
-        Logger.log("AppleScript: ctrl+\(spaceNumber) (key code \(keyCode))", category: .scriptExecution, level: .debug)
+        Logger.log("  AppleScript: spaceNumber = \(spaceNumber) -> keycode = \(keyCode), key = \(key)", category: .scriptExecution, level: .debug)
         if let as_ = NSAppleScript(source: script) {
             var err: NSDictionary?
             as_.executeAndReturnError(&err)
-            if let err { Logger.log("AppleScript error: \(err)", category: .scriptExecution, level: .error) }
+            if let err { Logger.log("!!  AppleScript error: \(err)", category: .scriptExecution, level: .error) }
         }
     }
 
