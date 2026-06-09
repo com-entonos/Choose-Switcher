@@ -20,8 +20,7 @@ class SpaceManager: ObservableObject {
     }
     private var previousLastActiveSpace: Int?
     private var lastActiveSpace: Int? {
-        didSet { previousLastActiveSpace = oldValue
-    Logger.log("  PREVIOUSLASTACTIVESPACE = \(previousLastActiveSpace ?? 0)", level: .debug)}
+        didSet { previousLastActiveSpace = oldValue }
     }
     var goingToApp : NSRunningApplication?
     private var justOnce  = false
@@ -90,8 +89,7 @@ class SpaceManager: ObservableObject {
     /// determines its 1-based ctrl+number position, and sends the keystroke.
     private func switchToApp(_ app: NSRunningApplication) {
         guard let spaceNumber = spaceNumber(for: app.processIdentifier) else {
-            Logger.log("!! could not find space number, falling back to Dock click", level: .debug)
-            clickDockIcon(appName: app.localizedName ?? "")
+            Logger.log("!! could not find space number- abort", level: .debug)
             return
         }
         switchToSpace(app, spaceNumber)
@@ -100,7 +98,7 @@ class SpaceManager: ObservableObject {
         lastActiveSpace = spaceNumber
         Logger.log("  switching to space \(spaceNumber) for \(app.localizedName ?? "<none>")", level: .debug)
         goingToApp = app
-        switchViaAppleScript(spaceNumber: spaceNumber)
+        switchViaCoreGraphics(spaceNumber: spaceNumber)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { app.activate(); self.goingToApp = nil }
     }
 
@@ -177,26 +175,58 @@ class SpaceManager: ObservableObject {
         return nil
     }
 
-    /// Sends ctrl+N via AppleScript to switch to space N on the active display.
-    private func switchViaAppleScript(spaceNumber: Int) {
-        // Key codes for ctrl+1 through ctrl+12
-        let keyCodes = [18, 19, 20, 21, 23, 22, 26, 28, 25, 29, 27, 24] // this is 1-9,0,-,= which is the top row of US keyboard
-        let keys = ["control down", "{control down, option down}", "{control down, option down, shift down}", "{control down, option down, shift down, command down}"]
-        guard spaceNumber >= 1, spaceNumber <= keyCodes.count * keys.count else {
+    /// Sends native keyboard events to switch to space N on the active display.
+    private func switchViaCoreGraphics(spaceNumber: Int) {
+        // Key codes for ctrl+1 through ctrl+12 (corresponds to 1-9, 0, -, = on US Keyboards)
+        let keyCodes = [18, 19, 20, 21, 23, 22, 26, 28, 25, 29, 27, 24]
+        guard spaceNumber >= 1, spaceNumber <= keyCodes.count * 4 else {
             Logger.log("space number \(spaceNumber) out of range", level: .error)
             return
         }
-        let keyCode = keyCodes[(spaceNumber - 1) % 12]
-        let key = keys[min(keys.count - 1, (spaceNumber - 1) / 12)]
-        let script  = """
-        tell application "System Events" to key code \(keyCode) using \(key)
-        """
-        Logger.log("  AppleScript: spaceNumber = \(spaceNumber) -> keycode = \(keyCode), key = \(key)", category: .scriptExecution, level: .debug)
-        if let as_ = NSAppleScript(source: script) {
-            var err: NSDictionary?
-            as_.executeAndReturnError(&err)
-            if let err { Logger.log("!!  AppleScript error: \(err)", category: .scriptExecution, level: .error) }
+        // Create the system event source
+        guard let source = CGEventSource(stateID: .hidSystemState) else {
+            Logger.log("Failed to create CGEventSource", level: .error)
+            return
         }
+        
+        // Determine target index and tier
+        let keyCode = CGKeyCode(keyCodes[(spaceNumber - 1) % 12])
+        
+        // Initialize key down and key up events
+        guard let keyDownEvent = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
+              let keyUpEvent = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false) else {
+            Logger.log("Failed to create CGEvent objects", level: .error)
+            return
+        }
+        
+        // Map your custom tier matrix back to pure CGEventFlags
+        var flags: CGEventFlags = [.maskControl]
+        switch (spaceNumber - 1) / 12 {
+        case 0:
+            // Tier 0: Control only
+            break
+        case 1:
+            // Tier 1: Control + Option
+            flags.insert(.maskAlternate)
+        case 2:
+            // Tier 2: Control + Option + Shift
+            flags.insert([.maskAlternate, .maskShift])
+        case 3:
+            // Tier 3: Control + Option + Shift + Command
+            flags.insert([.maskAlternate, .maskShift, .maskCommand])
+        default:
+            break
+        }
+        
+        // Assign the built flags to both events
+        keyDownEvent.flags = flags
+        keyUpEvent.flags = flags
+        
+        Logger.log("CoreGraphics Event: spaceNumber = \(spaceNumber) -> keycode = \(keyCode), flags = \(flags.rawValue)", category: .lifecycle, level: .debug)
+        
+        // Post events directly to the HID system tap (simulating hardware input)
+        keyDownEvent.post(tap: .cghidEventTap)
+        keyUpEvent.post(tap: .cghidEventTap)
     }
 
     // MARK: - Window detection
@@ -236,81 +266,6 @@ class SpaceManager: ObservableObject {
         if doingUndo {
             previousLastActiveApp = lastActiveApp
             prev.activate()
-        }
-    }
-
-    // MARK: - Dock click (fallback)
-    private func AScript(appName: String) -> String {
-        return """
-        tell application "System Events"
-            tell process "Dock"
-                repeat with aList in every list
-                    repeat with anItem in every UI element of aList
-                        if name of anItem is "\(appName)" then
-                            click anItem
-                            return
-                        end if
-                    end repeat
-                end repeat
-            end tell
-        end tell
-        """
-    }
-    func clickDockIcon(appName: String) {
-        let script = AScript(appName: appName)
-        Logger.log("Dock click script for: \(appName)", category: .scriptExecution, level: .debug)
-        if let as_ = NSAppleScript(source: script) {
-            var err: NSDictionary?
-            as_.executeAndReturnError(&err)
-            if let err {
-                Logger.log("Dock click error: \(err)", category: .scriptExecution, level: .error)
-                let code = err["NSAppleScriptErrorNumber"] as? Int
-                if code == -1743 {
-                    ForcePermissionClickDockIcon(appName: appName)
-                } else {
-                    handleUnrecoverableError(message: "Allow Choose Switcher to automate System Events.")
-                }
-            }
-        }
-    }
-
-    func ForcePermissionClickDockIcon(appName: String) {
-        let script = AScript(appName: appName)
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments     = ["-e", script]
-        let errPipe = Pipe()
-        process.standardError = errPipe
-        Logger.log("Force osascript for: \(appName)", category: .scriptExecution, level: .debug)
-        do {
-            try process.run(); process.waitUntilExit()
-            if process.terminationStatus == 0 {
-                Logger.log("Force osascript succeeded", category: .scriptExecution, level: .debug)
-            } else {
-                let data = errPipe.fileHandleForReading.readDataToEndOfFile()
-                let msg  = String(data: data, encoding: .utf8) ?? "unknown"
-                Logger.log("Force osascript failed: \(msg)", category: .scriptExecution, level: .fault)
-                handleUnrecoverableError(message: "Fatal osascript error: \(msg)")
-            }
-        } catch {
-            Logger.log("Force process error: \(error)", category: .scriptExecution, level: .fault)
-            handleUnrecoverableError(message: "Failed to launch: \(error.localizedDescription)")
-        }
-    }
-
-    private func handleUnrecoverableError(message: String) {
-        DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.messageText     = "Fatal Automation Permission"
-            alert.informativeText = message
-            alert.addButton(withTitle: "Open Automation in System Preferences")
-            alert.addButton(withTitle: "Just Quit")
-            NSApp.activate(ignoringOtherApps: true)
-            let response = alert.runModal()
-            if response == .alertFirstButtonReturn {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
-            }
-            NSApp.terminate(nil)
         }
     }
 }
