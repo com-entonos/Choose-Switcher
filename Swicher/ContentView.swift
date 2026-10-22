@@ -33,7 +33,8 @@ struct ContentView: View {
                 }
                 ForEach(manager.forceSwitch.keys.sorted(), id: \.self) { bid in
                     HStack {
-                        Text(bid).font(.system(size: 11, design: .monospaced))
+                        let ID = Text(" (\(bid))").font(.system(size: 7, design: .monospaced))
+                        Text("\(getAppName(from: bid)) \(ID)").font(.system(size: 11, design: .monospaced))
                         Spacer()
                         Picker("", selection: Binding(
                             get: { manager.forceSwitch[bid]! ? 1 : 0 },
@@ -97,3 +98,25 @@ struct ContentView_Previews: PreviewProvider {
     }
 }
 */
+
+func getAppName(from bundleIdentifier: String) -> String {
+    // 1. Get the local file URL of the application bundle
+    guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
+        return bundleIdentifier
+    }
+    
+    // 2. Initialize the bundle for that application
+    guard let bundle = Bundle(url: appURL) else {
+        return bundleIdentifier
+    }
+    
+    // 3. Extract the localized or regular display name
+    if let appName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+        ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String, !appName.isEmpty {
+        return appName
+    } else {
+        return bundleIdentifier
+    }
+    
+    //return appName == nil ? bundleIdentifier : appName! //(appName! + " (" + bundleIdentifier + ")")
+}
