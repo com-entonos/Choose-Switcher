@@ -16,7 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = self
         checkPermissions()
         setupObserver()
-        showSettings()
+        //showSettings()
     }
 
     // This shows the settings when you "open" the app again
