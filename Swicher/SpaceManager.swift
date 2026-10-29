@@ -46,6 +46,7 @@ class SpaceManager: ObservableObject {
 
         Logger.log("\((bid != Bundle.main.bundleIdentifier && bid != lastBid && bid != "com.apple.loginwindow" && bid == goingToBid) ? "" : "REJECTED: ")app activation: \(name) (\(bid)) goingToBid=\(goingToBid) last=\(lastBid) plast=\(prevBid)", level: .debug)
         guard bid != Bundle.main.bundleIdentifier, bid != lastBid, bid != "com.apple.loginwindow", bid == goingToBid else { return }
+        // if app != us and app != lastActiveApp and app != loginwindow and app == going to app
 
         if hasWindowInCurrentSpace(pid: app.processIdentifier) {
             if doingUndo, let spaceNumber = previousLastActiveSpace {
@@ -56,7 +57,7 @@ class SpaceManager: ObservableObject {
                 previousLastActiveSpace = lastActiveSpace
             }
             doingUndo = false
-            Logger.log("  has on-screen windows, \(forceSwitch[bid] == nil ? "would ask to" : (forceSwitch[bid]! ? "would" : "would not")) switch", level: .debug)
+            Logger.log("  has on-screen windows, would \(forceSwitch[bid] == nil ? "ask to " : (forceSwitch[bid]! ? "" : "not "))switch", level: .debug)
             return
         }
 
@@ -121,11 +122,10 @@ class SpaceManager: ObservableObject {
         let allWindows = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID)
                          as? [[String: Any]] ?? []
         let pidWIDs = Set(allWindows.compactMap { w -> Int? in
-            guard let winPid = w[kCGWindowOwnerPID as String] as? Int32,
-                  winPid == pid,
-                  let wid = w[kCGWindowNumber as String] as? Int
+            guard let winPid = w[kCGWindowOwnerPID as String] as? Int32, winPid == pid,
+                  let winLayer = w[kCGWindowLayer as String] as? Int, winLayer == 0
             else { return nil }
-            return wid
+            return w[kCGWindowNumber as String] as? Int
         })
         guard !pidWIDs.isEmpty else {
             Logger.log("!!  no windows found for pid \(pid)", level: .debug)
@@ -163,7 +163,7 @@ class SpaceManager: ObservableObject {
         for monitor in monitors {
             guard let spaces = monitor["Spaces"] as? [[String: Any]] else { continue }
             for (i, space) in spaces.enumerated() {
-                let uuid = space["uuid"] as? String ?? ""
+                let uuid = space["uuid"] as? String ?? "nil"
                 if uuid == targetUUID {
                     let spaceNum = globalOffset + i + 1
                     Logger.log("    target space global #\(spaceNum) (display offset \(globalOffset), local index \(i))", level: .debug)
@@ -235,8 +235,8 @@ class SpaceManager: ObservableObject {
 
     private func hasWindowInCurrentSpace(pid: Int32) -> Bool {
         let windowList = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
-        Logger.log("  on-screen windows for pid \(pid): \(windowList.count(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == pid }))", level: .debug)
-        return windowList.contains { ($0[kCGWindowOwnerPID as String] as? Int32) == pid }
+        Logger.log("  on-screen windows for pid \(pid): \(windowList.count(where: { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && ($0[kCGWindowLayer as String] as? Int) == 0 }))", level: .debug)
+        return windowList.contains { ($0[kCGWindowOwnerPID as String] as? Int32) == pid && ($0[kCGWindowLayer as String] as? Int) == 0 }
     }
 
     // MARK: - Prompt
@@ -266,7 +266,7 @@ class SpaceManager: ObservableObject {
               curr != prev,
               let _ = prev.bundleIdentifier else { return }
         Logger.log("try undo: \(curr.localizedName ?? "") back to \(prev.localizedName ?? "")", level: .debug)
-        doingUndo = forceSwitch[prev.bundleIdentifier!] != nil
+        doingUndo = forceSwitch[prev.bundleIdentifier!] != nil  // can this ever be false? only if 'just once' or not seen before...
         if doingUndo {
             previousLastActiveApp = lastActiveApp
             prev.activate()
