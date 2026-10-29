@@ -13,6 +13,7 @@ class SpaceManager: ObservableObject {
     @Published var forceSwitch: [String: Bool] {
         didSet { UserDefaults.standard.set(forceSwitch, forKey: "ForceSwitch") }
     }
+    @Published var nameToBundle: [String: String] = [:]
 
     private var previousLastActiveApp: NSRunningApplication?
     private var lastActiveApp: NSRunningApplication? {
@@ -31,6 +32,7 @@ class SpaceManager: ObservableObject {
                            as? [String: Bool]
                            ?? ["com.apple.loginwindow": false,
                                "com.apple.UserNotificationCenter": false]
+        for bid in forceSwitch.keys { let _ = getAppName(from: bid) }
     }
 
     // MARK: - Main entry point
@@ -250,7 +252,9 @@ class SpaceManager: ObservableObject {
         NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
         Logger.log("showPrompt: \(response == .alertFirstButtonReturn ? "switch" : "")\(response == .alertSecondButtonReturn ? "stay" : "")\(response == .alertThirdButtonReturn ? "just once" : "")", category: .ui, level: .debug)
-        forceSwitch[app.bundleIdentifier!] = !(response == .alertSecondButtonReturn)
+        let bid = app.bundleIdentifier!
+        forceSwitch[bid] = !(response == .alertSecondButtonReturn)
+        if response != .alertThirdButtonReturn { let _ = getAppName(from: bid)}
         return response == .alertThirdButtonReturn
     }
 
@@ -267,5 +271,30 @@ class SpaceManager: ObservableObject {
             previousLastActiveApp = lastActiveApp
             prev.activate()
         }
+    }
+    
+    func getAppName(from bundleIdentifier: String) -> String? {
+        guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier),
+              let bundle = Bundle(url: appURL),
+              let appName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+                ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String, !appName.isEmpty
+        else {
+            nameToBundle[bundleIdentifier] = bundleIdentifier
+            return nil
+        }
+        nameToBundle[appName] = bundleIdentifier
+        return appName
+    }
+    func getFrontmostWindowID(for app: NSRunningApplication) -> CGWindowID? {
+        let pid = app.processIdentifier
+        let options: CGWindowListOption = [.optionAll] //[.optionOnScreenOnly, .excludeDesktopElements]
+        guard let windowList = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {return nil}
+        let topWindow = windowList.first { dict in
+            guard let windowPID = dict[kCGWindowOwnerPID as String] as? Int32,
+                  let windowLayer = dict[kCGWindowLayer as String] as? Int,
+                  windowPID == pid else { return false }
+            return windowLayer == 0 // Layer 0 targets standard UI windows
+        }
+        return topWindow?[kCGWindowNumber as String] as? CGWindowID
     }
 }

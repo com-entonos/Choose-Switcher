@@ -28,17 +28,22 @@ struct ContentView: View {
             Divider()
 
             List {
-                if manager.forceSwitch.isEmpty {
+                if manager.nameToBundle.isEmpty {
                     Text("No app rules saved yet.").foregroundColor(.secondary)
                 }
-                ForEach(manager.forceSwitch.keys.sorted(), id: \.self) { bid in
+                ForEach(manager.nameToBundle.keys.sorted(), id: \.self) { appName in
                     HStack {
-                        let ID = Text(" (\(bid))").font(.system(size: 7, design: .monospaced))
-                        Text("\(getAppName(from: bid)) \(ID)").font(.system(size: 11, design: .monospaced))
+                        let bid = manager.nameToBundle[appName] ?? appName
+                        if bid != appName && !bid.isEmpty {
+                            let ID = Text(" (\(bid))").font(.system(size: 7, design: .monospaced))
+                            Text("\(appName) \(ID)").font(.system(size: 11, design: .monospaced))
+                        } else {
+                            Text("\(appName)").font(.system(size: 11, design: .monospaced))
+                        }
                         Spacer()
                         Picker("", selection: Binding(
                             get: { manager.forceSwitch[bid]! ? 1 : 0 },
-                            set: { manager.forceSwitch[bid] = ($0 == 1) }
+                            set: { new in DispatchQueue.main.async { manager.forceSwitch[bid] = (new == 1) } }
                         )) {
                             Text("Stay").tag(0)
                             Text("Switch").tag(1)
@@ -46,7 +51,8 @@ struct ContentView: View {
                         .pickerStyle(.segmented)
                         .frame(width: 100)
                         
-                        Button(action: { manager.forceSwitch.removeValue(forKey: bid) }) {
+                        Button(action: { manager.forceSwitch.removeValue(forKey: bid)
+                            manager.nameToBundle.removeValue(forKey: appName)}) {
                             Image(systemName: "xmark.circle.fill").foregroundColor(.gray)
                         }
                         .buttonStyle(.plain)
@@ -98,25 +104,3 @@ struct ContentView_Previews: PreviewProvider {
     }
 }
 */
-
-func getAppName(from bundleIdentifier: String) -> String {
-    // 1. Get the local file URL of the application bundle
-    guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) else {
-        return bundleIdentifier
-    }
-    
-    // 2. Initialize the bundle for that application
-    guard let bundle = Bundle(url: appURL) else {
-        return bundleIdentifier
-    }
-    
-    // 3. Extract the localized or regular display name
-    if let appName = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-        ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String, !appName.isEmpty {
-        return appName
-    } else {
-        return bundleIdentifier
-    }
-    
-    //return appName == nil ? bundleIdentifier : appName! //(appName! + " (" + bundleIdentifier + ")")
-}
