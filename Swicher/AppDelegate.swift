@@ -16,6 +16,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.servicesProvider = self
         checkPermissions()
         setupObserver()
+        showSettings()
     }
 
     // This shows the settings when you "open" the app again
@@ -107,7 +108,7 @@ extension Logger {
         }
         
         // 2. Print to Xcode Console
-        let emoji = level == .error || level == .fault ? "❌" : "ℹ️"
-        print("\(emoji) [\(level)] \(message)")
+     //   let emoji = level == .error || level == .fault ? "❌" : "ℹ️"
+     //   print("\(emoji) [\(level)] \(message)")
     }
 }
